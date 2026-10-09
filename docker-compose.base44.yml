@@ -1,0 +1,32 @@
+# Base44 sandbox / development runbook for Trade-Fat.
+#
+# The project is a single self-contained static page (React + Tailwind are
+# already bundled inline in Metatrade-Pro-24-Terminal.html). There is no build
+# step, no backend, no database and no environment variable. nginx serves the
+# repo root on host port 3000 with that page as the directory index, so the
+# preview shows the terminal directly at "/".
+#
+# Nothing is baked into an image: nginx reads the bind-mounted files on every
+# request, so an edit is visible after a browser refresh (call reload_preview).
+services:
+  web:
+    image: nginx:alpine
+    restart: on-failure
+    # The sandbox clones this repo into a root-only-readable directory (mode
+    # 0700), which nginx's unprivileged worker user cannot traverse, so opening
+    # the bind-mounted web root is a prerequisite. Idempotent and sandbox-only
+    # (the container is the only consumer of this clone).
+    command: ["sh", "-ec", "chmod o+rx /usr/share/nginx/html && exec nginx -g 'daemon off;'"]
+    ports:
+      - "3000:80"
+    volumes:
+      # Mounted read-write because the startup chmod below (see `command`) has to
+      # adjust the mode of this bind-mounted directory; nginx itself only reads.
+      - ./:/usr/share/nginx/html
+      - ./.base44/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1/ | grep -q 'id=\"root\"' || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
